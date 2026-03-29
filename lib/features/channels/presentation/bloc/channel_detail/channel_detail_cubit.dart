@@ -69,28 +69,37 @@ class ChannelDetailCubit extends Cubit<ChannelDetailState> {
   Future<void> deleteChannel(String uid) =>
       _channelRepository.deleteChannel(_channelId, uid);
 
+  Future<void> leaveChannel(String uid) =>
+      _channelRepository.leaveChannel(channelId: _channelId, uid: uid);
+
+  Future<void> updateNotificationSchedule({
+    required String uid,
+    required List<String> notifySlots,
+    required String notifyStartDateBangkok,
+    required bool repeatDaily,
+  }) =>
+      _channelRepository.updateChannelNotificationSchedule(
+        channelId: _channelId,
+        uid: uid,
+        notifySlots: notifySlots,
+        notifyStartDateBangkok: notifyStartDateBangkok,
+        repeatDaily: repeatDaily,
+      );
+
   Future<void> createReminder({
     required String title,
     String? body,
-    required String scheduleKind,
-    required String timeSlot,
     required String createdByUid,
   }) =>
       _reminderRepository.createReminder(
         channelId: _channelId,
         title: title,
         body: body,
-        scheduleKind: scheduleKind,
-        timeSlot: timeSlot,
         createdByUid: createdByUid,
       );
 
   Future<void> deleteReminder(String reminderId) =>
       _reminderRepository.deleteReminder(_channelId, reminderId);
-
-  Future<void> toggleReminderEnabled(String reminderId, bool enabled) =>
-      _reminderRepository.updateReminder(_channelId, reminderId,
-          enabled: enabled);
 
   @override
   Future<void> close() {

@@ -3,12 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:noti_me/core/theme/app_theme.dart';
+import 'package:noti_me/core/utils/bangkok_calendar.dart';
+import 'package:noti_me/domain/entities/channel.dart';
+import 'package:noti_me/domain/entities/reminder.dart';
 import 'package:noti_me/domain/entities/session_user.dart';
 
 import '../../../reminders/presentation/screens/create_reminder_screen.dart';
 import '../../../invites/presentation/screens/send_invite_screen.dart';
 import '../bloc/channel_detail/channel_detail_cubit.dart';
 import '../bloc/channel_detail/channel_detail_state.dart';
+import '../widgets/channel_notify_schedule_picker.dart';
 
 class ChannelDetailScreen extends StatelessWidget {
   const ChannelDetailScreen({super.key, required this.user});
@@ -44,10 +48,7 @@ class ChannelDetailScreen extends StatelessWidget {
 
                   // Members sheet button
                   IconButton(
-                    icon: Badge(
-                      label: Text('${members.length}'),
-                      child: const Icon(Icons.people_outline_rounded),
-                    ),
+                    icon: const Icon(Icons.people_outline_rounded),
                     tooltip: 'Members',
                     onPressed: () => _showMembersSheet(context, members),
                   ),
@@ -70,10 +71,27 @@ class ChannelDetailScreen extends StatelessWidget {
                         ),
                       if (channel.createdByUid == user.uid)
                         PopupMenuItem(
+                          value: _MenuAction.notificationSchedule,
+                          child: const _MenuItem(
+                            icon: Icons.schedule_rounded,
+                            label: 'Notification schedule',
+                          ),
+                        ),
+                      if (channel.createdByUid == user.uid)
+                        PopupMenuItem(
                           value: _MenuAction.delete,
                           child: _MenuItem(
                             icon: Icons.delete_outline_rounded,
                             label: 'Delete channel',
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      if (channel.createdByUid != user.uid)
+                        PopupMenuItem(
+                          value: _MenuAction.leave,
+                          child: _MenuItem(
+                            icon: Icons.exit_to_app_rounded,
+                            label: 'Leave channel',
                             color: Theme.of(context).colorScheme.error,
                           ),
                         ),
@@ -83,66 +101,39 @@ class ChannelDetailScreen extends StatelessWidget {
               ),
 
               // ── Reminders list ──────────────────────────────────────────
-              body: reminders.isEmpty
-                  ? _EmptyReminders(
-                      onAdd: () => _openCreateReminder(context, channel))
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(top: 8, bottom: 24),
-                      itemCount: reminders.length,
-                      itemBuilder: (context, i) {
-                        final r = reminders[i];
-                        return Dismissible(
-                          key: ValueKey(r.id),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 20),
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Icon(Icons.delete_rounded,
-                                color: Colors.red),
-                          ),
-                          confirmDismiss: (_) => showDialog<bool>(
-                            context: context,
-                            builder: (_) => AlertDialog(
-                              title: const Text('Delete reminder?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, true),
-                                  style: TextButton.styleFrom(
-                                      foregroundColor: Theme.of(context)
-                                          .colorScheme
-                                          .error),
-                                  child: const Text('Delete'),
-                                ),
-                              ],
-                            ),
-                          ),
-                          onDismissed: (_) => context
-                              .read<ChannelDetailCubit>()
-                              .deleteReminder(r.id),
-                          child: _ReminderCard(
-                            title: r.title,
-                            slotLabel: _slotLabel(r.timeSlot),
-                            scheduleKind: r.scheduleKind,
-                            enabled: r.enabled,
-                            onToggle: (v) => context
-                                .read<ChannelDetailCubit>()
-                                .toggleReminderEnabled(r.id, v),
-                          ),
-                        );
-                      },
+              body: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _NotifyScheduleSummaryCard(
+                      channel: channel,
+                      canEdit: channel.createdByUid == user.uid,
+                      onEdit: channel.createdByUid == user.uid
+                          ? () => _openScheduleSheet(context, channel)
+                          : null,
                     ),
+                  ),
+                  if (reminders.isEmpty)
+                    SliverFillRemaining(
+                      child: _EmptyReminders(
+                          onAdd: () =>
+                              _openCreateReminder(context, channel)),
+                    )
+                  else
+                    SliverPadding(
+                      padding:
+                          const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                      sliver: SliverToBoxAdapter(
+                        child: _ReminderGroupCard(
+                          reminders: reminders,
+                          cubit: context.read<ChannelDetailCubit>(),
+                          scaffoldMessenger:
+                              ScaffoldMessenger.maybeOf(context),
+                          parentContext: context,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
 
             ),
         };
@@ -153,10 +144,12 @@ class ChannelDetailScreen extends StatelessWidget {
   // ── Actions ──────────────────────────────────────────────────────────────
 
   void _handleMenu(
-      BuildContext context, _MenuAction action, dynamic channel) async {
+      BuildContext context, _MenuAction action, Channel channel) async {
     switch (action) {
       case _MenuAction.invite:
         _showInviteSheet(context, channel);
+      case _MenuAction.notificationSchedule:
+        _openScheduleSheet(context, channel);
       case _MenuAction.delete:
         final confirm = await showDialog<bool>(
           context: context,
@@ -185,6 +178,34 @@ class ChannelDetailScreen extends StatelessWidget {
               .deleteChannel(user.uid);
           if (context.mounted) Navigator.of(context).pop();
         }
+      case _MenuAction.leave:
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Leave channel?'),
+            content: Text(
+                'You will no longer receive reminders from "${channel.name}".'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(
+                    foregroundColor:
+                        Theme.of(context).colorScheme.error),
+                child: const Text('Leave'),
+              ),
+            ],
+          ),
+        );
+        if (confirm == true && context.mounted) {
+          await context
+              .read<ChannelDetailCubit>()
+              .leaveChannel(user.uid);
+          if (context.mounted) Navigator.of(context).pop();
+        }
     }
   }
 
@@ -198,7 +219,20 @@ class ChannelDetailScreen extends StatelessWidget {
     );
   }
 
-  void _showInviteSheet(BuildContext context, dynamic channel) {
+  void _openScheduleSheet(BuildContext context, Channel channel) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _NotificationScheduleSheet(
+        channel: channel,
+        userId: user.uid,
+      ),
+    );
+  }
+
+  void _showInviteSheet(BuildContext context, Channel channel) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -222,7 +256,7 @@ class ChannelDetailScreen extends StatelessWidget {
     );
   }
 
-  void _openCreateReminder(BuildContext context, dynamic channel) {
+  void _openCreateReminder(BuildContext context, Channel channel) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CreateReminderScreen(
@@ -232,16 +266,209 @@ class ChannelDetailScreen extends StatelessWidget {
       ),
     );
   }
-
-  String _slotLabel(String slot) => switch (slot) {
-        'morning' => '08:30',
-        'noon' => '12:00',
-        'evening' => '17:30',
-        _ => slot,
-      };
 }
 
-enum _MenuAction { invite, delete }
+enum _MenuAction { invite, notificationSchedule, delete, leave }
+
+// ── Notification schedule summary ─────────────────────────────────────────────
+
+class _NotifyScheduleSummaryCard extends StatelessWidget {
+  const _NotifyScheduleSummaryCard({
+    required this.channel,
+    required this.canEdit,
+    this.onEdit,
+  });
+
+  final Channel channel;
+  final bool canEdit;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final slots = describeNotifySlots(channel.notifySlots);
+    final start =
+        describeNotifyStartDateShort(channel.notifyStartDateBangkok);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Material(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: canEdit ? onEdit : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.schedule_rounded,
+                    size: 22, color: cs.onSurface.withValues(alpha: 0.55)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        slots.isEmpty ? 'No time slots' : slots,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            'From $start (+7)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurface.withValues(alpha: 0.5),
+                              fontFamily: kMonoFontFamily,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: channel.repeatDaily
+                                  ? kNotiMePrimary.withValues(alpha: 0.18)
+                                  : cs.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              channel.repeatDaily ? 'Daily' : 'Once',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: channel.repeatDaily
+                                    ? Colors.black87
+                                    : cs.onSurface.withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (canEdit)
+                  Icon(Icons.edit_outlined,
+                      size: 18, color: cs.onSurface.withValues(alpha: 0.35)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationScheduleSheet extends StatefulWidget {
+  const _NotificationScheduleSheet({
+    required this.channel,
+    required this.userId,
+  });
+
+  final Channel channel;
+  final String userId;
+
+  @override
+  State<_NotificationScheduleSheet> createState() =>
+      _NotificationScheduleSheetState();
+}
+
+class _NotificationScheduleSheetState extends State<_NotificationScheduleSheet> {
+  final _pickerKey = GlobalKey<ChannelNotifySchedulePickerState>();
+  bool _saving = false;
+
+  Future<void> _save() async {
+    final st = _pickerKey.currentState;
+    if (st == null || st.selectedSlots.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick at least one time slot')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await context.read<ChannelDetailCubit>().updateNotificationSchedule(
+            uid: widget.userId,
+            notifySlots: st.selectedSlots.toList(),
+            notifyStartDateBangkok: st.notifyStartDateBangkok,
+            repeatDaily: st.repeatDaily,
+          );
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 12,
+        bottom: bottom + 24,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Notification schedule',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            ChannelNotifySchedulePicker(
+              key: _pickerKey,
+              initialSlots: widget.channel.notifySlots.toSet(),
+              initialNotifyStartDateBangkok:
+                  widget.channel.notifyStartDateBangkok,
+              initialRepeatDaily: widget.channel.repeatDaily,
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
@@ -462,78 +689,146 @@ class _InviteSheet extends StatelessWidget {
   }
 }
 
-// ── Reminder card ─────────────────────────────────────────────────────────────
+// ── Reminder group card (unified container for all reminders) ─────────────────
 
-class _ReminderCard extends StatelessWidget {
-  const _ReminderCard({
-    required this.title,
-    required this.slotLabel,
-    required this.scheduleKind,
-    required this.enabled,
-    required this.onToggle,
+class _ReminderGroupCard extends StatelessWidget {
+  const _ReminderGroupCard({
+    required this.reminders,
+    required this.cubit,
+    required this.scaffoldMessenger,
+    required this.parentContext,
   });
 
-  final String title;
-  final String slotLabel;
-  final String scheduleKind;
-  final bool enabled;
-  final ValueChanged<bool> onToggle;
+  final List<Reminder> reminders;
+  final ChannelDetailCubit cubit;
+  final ScaffoldMessengerState? scaffoldMessenger;
+  final BuildContext parentContext;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: enabled
-                    ? kNotiMePrimary.withValues(alpha: 0.2)
-                    : cs.onSurface.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: cs.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (int i = 0; i < reminders.length; i++) ...[
+            _buildItem(context, reminders[i]),
+            if (i < reminders.length - 1)
+              Divider(
+                height: 1,
+                indent: 62,
+                endIndent: 0,
+                color: cs.outlineVariant.withValues(alpha: 0.5),
               ),
-              child: Icon(
-                Icons.alarm_rounded,
-                size: 20,
-                color: enabled
-                    ? Colors.black87
-                    : cs.onSurface.withValues(alpha: 0.35),
-              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItem(BuildContext context, Reminder r) {
+    return Dismissible(
+      key: ValueKey(r.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: Colors.red.shade50,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        child: const Icon(Icons.delete_rounded, color: Colors.red),
+      ),
+      confirmDismiss: (_) => showDialog<bool>(
+        context: parentContext,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Delete reminder?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: enabled
-                              ? cs.onSurface
-                              : cs.onSurface.withValues(alpha: 0.4),
-                        ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: TextButton.styleFrom(
+                  foregroundColor:
+                      Theme.of(dialogContext).colorScheme.error),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ),
+      onDismissed: (_) {
+        cubit.deleteReminder(r.id).catchError((Object e, _) {
+          scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Could not delete: $e')),
+          );
+        });
+      },
+      child: _ReminderRow(title: r.title, body: r.body),
+    );
+  }
+}
+
+// ── Reminder row (inside the unified group card) ──────────────────────────────
+
+class _ReminderRow extends StatelessWidget {
+  const _ReminderRow({required this.title, this.body});
+
+  final String title;
+  final String? body;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: kNotiMePrimary.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.alarm_rounded,
+                size: 17, color: Colors.black87),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (body != null && body!.trim().isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(
-                    '$slotLabel · $scheduleKind',
+                    body!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.5),
+                      color: cs.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
-            Switch(value: enabled, onChanged: onToggle),
-          ],
-        ),
+          ),
+          Icon(
+            Icons.swipe_left_alt_rounded,
+            size: 14,
+            color: cs.onSurface.withValues(alpha: 0.18),
+          ),
+        ],
       ),
     );
   }

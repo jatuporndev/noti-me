@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 import 'package:noti_me/core/di/service_locator.dart';
 import 'package:noti_me/core/theme/app_theme.dart';
@@ -11,6 +12,20 @@ import '../bloc/invite_inbox_cubit.dart';
 import '../bloc/invite_inbox_state.dart';
 import 'redeem_code_screen.dart';
 
+// Deterministic color per channel initial.
+Color _channelColor(String name) {
+  const palette = [
+    Color(0xFF3A7BD5),
+    Color(0xFF7C5CBF),
+    Color(0xFF3AACB0),
+    Color(0xFFE07B3A),
+    Color(0xFFD94F6D),
+    Color(0xFF3A9E78),
+  ];
+  if (name.isEmpty) return palette[0];
+  return palette[name.codeUnitAt(0) % palette.length];
+}
+
 class InviteInboxScreen extends StatelessWidget {
   const InviteInboxScreen({super.key, required this.user});
 
@@ -21,20 +36,7 @@ class InviteInboxScreen extends StatelessWidget {
     return BlocBuilder<InviteInboxCubit, InviteInboxState>(
       builder: (context, state) {
         return switch (state) {
-          InviteInboxLoading() => Scaffold(
-              body: CustomScrollView(
-                slivers: [
-                  const SliverAppBar(
-                    title: Text('Inbox'),
-                    backgroundColor: Colors.transparent,
-                    pinned: true,
-                  ),
-                  const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                ],
-              ),
-            ),
+          InviteInboxLoading() => const _InboxLoadingSkeleton(),
           InviteInboxError(:final message) => Scaffold(
               body: CustomScrollView(
                 slivers: [
@@ -47,8 +49,10 @@ class InviteInboxScreen extends StatelessWidget {
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text('Error: $message',
-                            textAlign: TextAlign.center),
+                        child: Text(
+                          'Error: $message',
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
                   ),
@@ -73,12 +77,18 @@ class InviteInboxScreen extends StatelessWidget {
                   if (invites.isEmpty)
                     SliverFillRemaining(
                       child: _EmptyInbox(
-                          onRedeemTap: () => _openRedeem(context)),
+                        onRedeemTap: () => _openRedeem(context),
+                      ),
                     )
-                  else
+                  else ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+                        child: _SectionLabel('Invites · ${invites.length}'),
+                      ),
+                    ),
                     SliverPadding(
-                      padding:
-                          const EdgeInsets.only(top: 4, bottom: 100),
+                      padding: const EdgeInsets.only(bottom: 100),
                       sliver: SliverList.builder(
                         itemCount: invites.length,
                         itemBuilder: (context, i) => _InviteCard(
@@ -95,6 +105,7 @@ class InviteInboxScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -103,8 +114,12 @@ class InviteInboxScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _accept(BuildContext context, String inviteId,
-      String channelId, String channelName) async {
+  Future<void> _accept(
+    BuildContext context,
+    String inviteId,
+    String channelId,
+    String channelName,
+  ) async {
     try {
       final profile =
           await sl<UserRepository>().watchUserProfile(user.uid).first;
@@ -138,6 +153,30 @@ class InviteInboxScreen extends StatelessWidget {
   }
 }
 
+// ── Section label ─────────────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+            color: Theme.of(context)
+                .colorScheme
+                .onSurface
+                .withValues(alpha: 0.42),
+          ),
+    );
+  }
+}
+
+// ── Invite card ───────────────────────────────────────────────────────────────
+
 class _InviteCard extends StatelessWidget {
   const _InviteCard({
     required this.invite,
@@ -155,69 +194,114 @@ class _InviteCard extends StatelessWidget {
     final initial = invite.channelName.isNotEmpty
         ? invite.channelName[0].toUpperCase()
         : '#';
+    final color = _channelColor(invite.channelName);
+    final sender = invite.fromNickname ?? 'Someone';
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: kNotiMePrimary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                initial,
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    invite.channelName,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'From ${invite.fromNickname ?? 'someone'}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.5),
+            // Header: channel icon + name + sender
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Channel icon
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.13),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.25),
+                      width: 1.5,
                     ),
                   ),
-                ],
-              ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ActionChip(
-                  label: 'Accept',
-                  icon: Icons.check_rounded,
-                  color: Colors.green.shade600,
-                  onTap: onAccept,
+                  alignment: Alignment.center,
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      fontFamily: kFontFamily,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      color: color,
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 6),
-                IconButton(
-                  icon: Icon(Icons.close_rounded,
-                      size: 20, color: cs.onSurface.withValues(alpha: 0.4)),
-                  onPressed: onDecline,
-                  tooltip: 'Decline',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        invite.channelName,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.person_rounded,
+                            size: 12,
+                            color: cs.onSurface.withValues(alpha: 0.40),
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              'Invited by $sender',
+                              style: TextStyle(
+                                fontFamily: kFontFamily,
+                                fontSize: 12,
+                                color: cs.onSurface.withValues(alpha: 0.50),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onDecline,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(38),
+                      padding: EdgeInsets.zero,
+                      side: BorderSide(color: cs.outlineVariant),
+                      foregroundColor: cs.onSurface.withValues(alpha: 0.60),
+                    ),
+                    child: const Text('Decline'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onAccept,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(38),
+                      padding: EdgeInsets.zero,
+                      backgroundColor: kNotiMePrimary,
+                      foregroundColor: Colors.black87,
+                    ),
+                    child: const Text('Join'),
+                  ),
                 ),
               ],
             ),
@@ -228,42 +312,68 @@ class _InviteCard extends StatelessWidget {
   }
 }
 
-class _ActionChip extends StatelessWidget {
-  const _ActionChip({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
+// ── Loading skeleton ──────────────────────────────────────────────────────────
 
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
+class _InboxLoadingSkeleton extends StatelessWidget {
+  const _InboxLoadingSkeleton();
+
+  static const _fakeInvites = [
+    ChannelInvite(
+      id: '1',
+      channelId: 'c1',
+      channelName: 'Design Team',
+      fromUid: 'u1',
+      fromNickname: 'Alex Johnson',
+      status: 'pending',
+    ),
+    ChannelInvite(
+      id: '2',
+      channelId: 'c2',
+      channelName: 'Marketing',
+      fromUid: 'u2',
+      fromNickname: 'Sara Williams',
+      status: 'pending',
+    ),
+    ChannelInvite(
+      id: '3',
+      channelId: 'c3',
+      channelName: 'Backend Devs',
+      fromUid: 'u3',
+      fromNickname: 'Tom Smith',
+      status: 'pending',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: color,
-                fontFamily: kFontFamily,
+    return Skeletonizer(
+      enabled: true,
+      child: Scaffold(
+        body: CustomScrollView(
+          slivers: [
+            const SliverAppBar(
+              title: Text('Inbox'),
+              backgroundColor: Colors.transparent,
+              pinned: true,
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+                child: Text(
+                  'INVITES · ${_fakeInvites.length}',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.only(bottom: 100),
+              sliver: SliverList.builder(
+                itemCount: _fakeInvites.length,
+                itemBuilder: (_, i) => _InviteCard(
+                  invite: _fakeInvites[i],
+                  onAccept: () {},
+                  onDecline: () {},
+                ),
               ),
             ),
           ],
@@ -272,6 +382,8 @@ class _ActionChip extends StatelessWidget {
     );
   }
 }
+
+// ── Empty state ───────────────────────────────────────────────────────────────
 
 class _EmptyInbox extends StatelessWidget {
   const _EmptyInbox({required this.onRedeemTap});
@@ -300,7 +412,7 @@ class _EmptyInbox extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'No invites',
+                'Inbox is empty',
                 style: Theme.of(context)
                     .textTheme
                     .titleLarge
@@ -308,17 +420,17 @@ class _EmptyInbox extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'When someone invites you to a channel\nit will appear here.',
+                'Channel invites from friends\nwill appear here.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                      height: 1.5,
+                      color: cs.onSurface.withValues(alpha: 0.52),
+                      height: 1.55,
                     ),
               ),
               const SizedBox(height: 28),
               OutlinedButton.icon(
                 onPressed: onRedeemTap,
-                icon: const Icon(Icons.qr_code_rounded, size: 18),
+                icon: const Icon(Icons.qr_code_rounded, size: 17),
                 label: const Text('Enter invite code'),
               ),
             ],
@@ -328,4 +440,3 @@ class _EmptyInbox extends StatelessWidget {
     );
   }
 }
-

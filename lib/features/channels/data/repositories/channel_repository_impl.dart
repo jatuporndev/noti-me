@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import 'package:noti_me/core/utils/bangkok_calendar.dart';
 import 'package:noti_me/domain/entities/channel.dart';
 import 'package:noti_me/domain/entities/channel_member.dart';
 import 'package:noti_me/domain/entities/channel_summary.dart';
@@ -26,18 +27,25 @@ class ChannelRepositoryImpl implements ChannelRepository {
     String? description,
     required String uid,
     required String nickname,
+    required List<String> notifySlots,
+    required String notifyStartDateBangkok,
+    required bool repeatDaily,
   }) async {
     final channelRef = _firestore.collection('channels').doc();
     final channelId = channelRef.id;
     final topicName = 'channel_$channelId';
     final inviteCode = _generateCode(6);
 
+    final slotsOrdered = orderedNotifySlots(notifySlots);
     final channelData = <String, dynamic>{
       'name': name,
       'fcmTopicName': topicName,
       'createdByUid': uid,
       'inviteCode': inviteCode,
       'createdAt': FieldValue.serverTimestamp(),
+      'notifySlots': slotsOrdered,
+      'notifyStartDateBangkok': notifyStartDateBangkok,
+      'repeatDaily': repeatDaily,
     };
     if (description != null && description.trim().isNotEmpty) {
       channelData['description'] = description.trim();
@@ -66,6 +74,8 @@ class ChannelRepositoryImpl implements ChannelRepository {
         'name': name,
         'role': 'owner',
         'joinedAt': FieldValue.serverTimestamp(),
+        'notifySlots': slotsOrdered,
+        'notifyStartDateBangkok': notifyStartDateBangkok,
       },
     );
 
@@ -80,7 +90,57 @@ class ChannelRepositoryImpl implements ChannelRepository {
       fcmTopicName: topicName,
       createdByUid: uid,
       inviteCode: inviteCode,
+      notifySlots: slotsOrdered,
+      notifyStartDateBangkok: notifyStartDateBangkok,
+      repeatDaily: repeatDaily,
     );
+  }
+
+  String _readNotifyStartDateBangkok(Map<String, dynamic> d) {
+    final v = d['notifyStartDateBangkok'] as String?;
+    if (v == null || v.trim().isEmpty) {
+      return Channel.legacyNotifyStartDateBangkok;
+    }
+    return v.trim();
+  }
+
+  @override
+  Future<void> updateChannelNotificationSchedule({
+    required String channelId,
+    required String uid,
+    required List<String> notifySlots,
+    required String notifyStartDateBangkok,
+    required bool repeatDaily,
+  }) async {
+    final ref = _firestore.collection('channels').doc(channelId);
+    final snap = await ref.get();
+    if (!snap.exists) {
+      throw StateError('Channel not found');
+    }
+    final owner = snap.data()?['createdByUid'] as String?;
+    if (owner != uid) {
+      throw StateError('Only the owner can update the schedule');
+    }
+    final ordered = orderedNotifySlots(notifySlots);
+    final batch = _firestore.batch();
+    batch.update(ref, {
+      'notifySlots': ordered,
+      'notifyStartDateBangkok': notifyStartDateBangkok,
+      'repeatDaily': repeatDaily,
+    });
+    // Keep the owner's membership summary in sync so the list card stays current.
+    batch.update(
+      _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('channelMemberships')
+          .doc(channelId),
+      {
+        'notifySlots': ordered,
+        'notifyStartDateBangkok': notifyStartDateBangkok,
+      },
+    );
+    await batch.commit();
   }
 
   @override
@@ -98,6 +158,11 @@ class ChannelRepositoryImpl implements ChannelRepository {
                 name: d['name'] as String? ?? '',
                 role: d['role'] as String? ?? 'member',
                 joinedAt: (d['joinedAt'] as Timestamp?)?.toDate(),
+                notifySlots: (d['notifySlots'] as List<dynamic>?)
+                    ?.whereType<String>()
+                    .toList(),
+                notifyStartDateBangkok:
+                    d['notifyStartDateBangkok'] as String?,
               );
             }).toList());
   }
@@ -119,6 +184,12 @@ class ChannelRepositoryImpl implements ChannelRepository {
         createdByUid: d['createdByUid'] as String? ?? '',
         inviteCode: d['inviteCode'] as String?,
         createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
+        notifySlots: (d['notifySlots'] as List<dynamic>?)
+                ?.whereType<String>()
+                .toList() ??
+            const ['morning', 'noon', 'evening'],
+        notifyStartDateBangkok: _readNotifyStartDateBangkok(d),
+        repeatDaily: d['repeatDaily'] as bool? ?? true,
       );
     });
   }
@@ -205,6 +276,11 @@ class ChannelRepositoryImpl implements ChannelRepository {
       createdByUid: d['createdByUid'] as String? ?? '',
       inviteCode: d['inviteCode'] as String?,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
+      notifySlots: (d['notifySlots'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          const ['morning', 'noon', 'evening'],
+      notifyStartDateBangkok: _readNotifyStartDateBangkok(d),
     );
   }
 
@@ -216,6 +292,16 @@ class ChannelRepositoryImpl implements ChannelRepository {
     required String nickname,
   }) async {
     final channelRef = _firestore.collection('channels').doc(channelId);
+
+    // Fetch first so we can copy notifySlots and topicName into the membership.
+    final channelSnap = await channelRef.get();
+    final channelData = channelSnap.data() ?? {};
+    final topicName = channelData['fcmTopicName'] as String?;
+    final notifySlots = (channelData['notifySlots'] as List<dynamic>?)
+            ?.whereType<String>()
+            .toList() ??
+        const [];
+
     final batch = _firestore.batch();
 
     batch.set(channelRef.collection('members').doc(uid), {
@@ -237,15 +323,48 @@ class ChannelRepositoryImpl implements ChannelRepository {
         'name': channelName,
         'role': 'member',
         'joinedAt': FieldValue.serverTimestamp(),
+        'notifySlots': notifySlots,
+        'notifyStartDateBangkok':
+            channelData['notifyStartDateBangkok'] as String? ?? '',
       },
     );
 
     await batch.commit();
 
-    final channelSnap = await channelRef.get();
-    final topicName = channelSnap.data()?['fcmTopicName'] as String?;
     if (topicName != null && topicName.isNotEmpty) {
       await _messaging.subscribeToTopic(topicName);
+    }
+  }
+
+  @override
+  Future<void> leaveChannel({
+    required String channelId,
+    required String uid,
+  }) async {
+    final channelRef = _firestore.collection('channels').doc(channelId);
+
+    // Grab the topic name before deleting anything.
+    final snap = await channelRef.get();
+    final topicName = snap.data()?['fcmTopicName'] as String?;
+
+    final batch = _firestore.batch();
+
+    // Remove member doc from the channel.
+    batch.delete(channelRef.collection('members').doc(uid));
+
+    // Remove membership summary from the user's sub-collection.
+    batch.delete(
+      _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('channelMemberships')
+          .doc(channelId),
+    );
+
+    await batch.commit();
+
+    if (topicName != null && topicName.isNotEmpty) {
+      await _messaging.unsubscribeFromTopic(topicName);
     }
   }
 
