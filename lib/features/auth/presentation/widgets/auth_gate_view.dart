@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 import 'package:noti_me/core/di/service_locator.dart';
+import 'package:noti_me/core/theme/app_theme.dart';
 import 'package:noti_me/features/home/presentation/screens/home_screen.dart';
 
 import '../bloc/auth_session/auth_session_cubit.dart';
@@ -17,16 +19,12 @@ class AuthGateView extends StatelessWidget {
     return BlocBuilder<AuthSessionCubit, AuthSessionState>(
       builder: (context, state) {
         return switch (state) {
-          AuthSessionLoading() => const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            ),
+          AuthSessionLoading() => const _AppLoadingScreen(),
           AuthSessionSignedOut() => BlocProvider(
               create: (_) => sl<SignInCubit>(),
               child: const SignInScreen(),
             ),
-          AuthSessionBootstrapping() => const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            ),
+          AuthSessionBootstrapping() => const _AppLoadingScreen(),
           AuthSessionReady(:final user) => HomeScreen(user: user),
           AuthSessionBootstrapFailure(:final error) => Scaffold(
               body: Center(
@@ -58,6 +56,107 @@ class AuthGateView extends StatelessWidget {
             ),
         };
       },
+    );
+  }
+}
+
+/// Full-screen loading shown while Firebase auth stream initialises or
+/// while the user document is being bootstrapped after sign-in.
+class _AppLoadingScreen extends StatelessWidget {
+  const _AppLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFF8EE),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Skeletonizer(
+              enabled: true,
+              effect: const ShimmerEffect(
+                baseColor: Color(0xFFFFE5B4),
+                highlightColor: Color(0xFFFFF8EE),
+                duration: Duration(milliseconds: 1200),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Big card — the skeleton shimmers over this whole block
+                  Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Skeletonizer replaces raster images with a plain bone rect;
+                          // keep the real mascot visible on the loading gate.
+                          Skeleton.keep(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: Image.asset(
+                                'assets/catcos.jpg',
+                                width: 148,
+                                height: 148,
+                                fit: BoxFit.cover,
+                                color: kNotiMePrimary,
+                                colorBlendMode: BlendMode.modulate,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'notiMe',
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineMedium
+                                ?.copyWith(
+                                  fontFamily: kMonoFontFamily,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.5,
+                                ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'never forget stuff again',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(color: Colors.black38),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  // Skeleton placeholder rows below the card
+                  Container(
+                    height: 14,
+                    width: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    height: 14,
+                    width: 110,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
