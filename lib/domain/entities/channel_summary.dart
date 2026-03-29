@@ -7,6 +7,8 @@ class ChannelSummary extends Equatable {
     required this.name,
     required this.role,
     this.joinedAt,
+    this.notifySlots,
+    this.notifyStartDateBangkok,
   });
 
   final String channelId;
@@ -14,6 +16,14 @@ class ChannelSummary extends Equatable {
   final String role;
   final DateTime? joinedAt;
 
+  /// Notification time slots (e.g. ['morning', 'evening']). Null for legacy
+  /// memberships created before this field was added.
+  final List<String>? notifySlots;
+
+  /// yyyy-MM-dd (Bangkok +7) when notifications start. Null for legacy docs.
+  final String? notifyStartDateBangkok;
+
   @override
-  List<Object?> get props => [channelId, name, role, joinedAt];
+  List<Object?> get props =>
+      [channelId, name, role, joinedAt, notifySlots, notifyStartDateBangkok];
 }

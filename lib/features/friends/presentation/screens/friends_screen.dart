@@ -11,6 +11,20 @@ import '../bloc/friends_cubit.dart';
 import '../bloc/friends_state.dart';
 import 'add_friend_screen.dart';
 
+// Deterministic color per first initial so avatars are consistent.
+Color _avatarColor(String name) {
+  const palette = [
+    Color(0xFF7C5CBF),
+    Color(0xFF3A9E78),
+    Color(0xFF3A7BD5),
+    Color(0xFFE07B3A),
+    Color(0xFFD94F6D),
+    Color(0xFF3AACB0),
+  ];
+  if (name.isEmpty) return palette[0];
+  return palette[name.codeUnitAt(0) % palette.length];
+}
+
 class FriendsScreen extends StatelessWidget {
   const FriendsScreen({super.key, required this.user});
 
@@ -30,7 +44,9 @@ class FriendsScreen extends StatelessWidget {
                     backgroundColor: Colors.transparent,
                     pinned: true,
                   ),
-                  SliverFillRemaining(child: Center(child: Text(message))),
+                  SliverFillRemaining(
+                    child: Center(child: Text(message)),
+                  ),
                 ],
               ),
             ),
@@ -42,35 +58,45 @@ class FriendsScreen extends StatelessWidget {
                     backgroundColor: Colors.transparent,
                     pinned: true,
                     actions: [
-                      IconButton(
-                        icon: const Icon(Icons.person_add_rounded),
-                        tooltip: 'Add friend',
-                        onPressed: () => _openAdd(context),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: FilledButton.icon(
+                          onPressed: () => _openAdd(context),
+                          icon: const Icon(Icons.person_add_rounded, size: 16),
+                          label: const Text('Add'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: Size.zero,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
                       ),
                     ],
                   ),
 
                   if (friends.isEmpty && incomingRequests.isEmpty)
                     SliverFillRemaining(
-                      child:
-                          _EmptyFriends(onAddTap: () => _openAdd(context)),
+                      child: _EmptyFriends(
+                        onAddTap: () => _openAdd(context),
+                      ),
                     )
                   else ...[
-                    // Incoming requests section
+                    // ── Pending requests ──────────────────────────────────
                     if (incomingRequests.isNotEmpty) ...[
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding:
-                              const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
                           child: _SectionLabel(
-                            'Requests (${incomingRequests.length})',
+                            'Requests · ${incomingRequests.length}',
                           ),
                         ),
                       ),
                       SliverList.builder(
                         itemCount: incomingRequests.length,
-                        itemBuilder: (context, i) =>
-                            _FriendRequestCard(
+                        itemBuilder: (context, i) => _FriendRequestCard(
                           request: incomingRequests[i],
                           onAccept: () => context
                               .read<FriendsCubit>()
@@ -80,17 +106,15 @@ class FriendsScreen extends StatelessWidget {
                               .declineRequest(incomingRequests[i].id),
                         ),
                       ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                      const SliverToBoxAdapter(child: SizedBox(height: 6)),
                     ],
 
-                    // Friends section
+                    // ── Friends list ──────────────────────────────────────
                     if (friends.isNotEmpty) ...[
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding:
-                              const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                          child:
-                              _SectionLabel('Friends (${friends.length})'),
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+                          child: _SectionLabel('Friends · ${friends.length}'),
                         ),
                       ),
                       SliverList.builder(
@@ -135,7 +159,8 @@ class FriendsScreen extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error),
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text('Remove'),
           ),
         ],
@@ -147,23 +172,29 @@ class FriendsScreen extends StatelessWidget {
   }
 }
 
+// ── Section label ─────────────────────────────────────────────────────────────
+
 class _SectionLabel extends StatelessWidget {
   const _SectionLabel(this.text);
-
   final String text;
 
   @override
   Widget build(BuildContext context) {
     return Text(
-      text,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+            color: Theme.of(context)
+                .colorScheme
+                .onSurface
+                .withValues(alpha: 0.42),
           ),
     );
   }
 }
+
+// ── Friend request card ───────────────────────────────────────────────────────
 
 class _FriendRequestCard extends StatelessWidget {
   const _FriendRequestCard({
@@ -182,62 +213,102 @@ class _FriendRequestCard extends StatelessWidget {
     final initial = request.fromNickname.isNotEmpty
         ? request.fromNickname[0].toUpperCase()
         : '?';
+    final color = _avatarColor(request.fromNickname);
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: kNotiMePrimary.withValues(alpha: 0.25),
-              child: Text(
-                initial,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    request.fromNickname,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    request.fromTagId,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: kMonoFontFamily,
-                      color: cs.onSurface.withValues(alpha: 0.45),
-                      letterSpacing: 1,
+            // Info row
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.13),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.28),
+                      width: 1.5,
                     ),
                   ),
-                ],
-              ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: Icon(Icons.check_circle_rounded,
-                      color: Colors.green.shade600),
-                  onPressed: onAccept,
-                  tooltip: 'Accept',
+                  child: Center(
+                    child: Text(
+                      initial,
+                      style: TextStyle(
+                        fontFamily: kFontFamily,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                  ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.cancel_rounded,
-                      color: cs.onSurface.withValues(alpha: 0.3)),
-                  onPressed: onDecline,
-                  tooltip: 'Decline',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        request.fromNickname,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        request.fromTagId,
+                        style: TextStyle(
+                          fontFamily: kMonoFontFamily,
+                          fontSize: 11,
+                          letterSpacing: 1.0,
+                          color: cs.onSurface.withValues(alpha: 0.40),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.person_add_rounded,
+                  size: 18,
+                  color: color.withValues(alpha: 0.55),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onDecline,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(38),
+                      padding: EdgeInsets.zero,
+                      side: BorderSide(color: cs.outlineVariant),
+                      foregroundColor: cs.onSurface.withValues(alpha: 0.60),
+                    ),
+                    child: const Text('Decline'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onAccept,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(38),
+                      padding: EdgeInsets.zero,
+                      backgroundColor: kNotiMePrimary,
+                      foregroundColor: Colors.black87,
+                    ),
+                    child: const Text('Accept'),
+                  ),
                 ),
               ],
             ),
@@ -247,6 +318,8 @@ class _FriendRequestCard extends StatelessWidget {
     );
   }
 }
+
+// ── Friend card ───────────────────────────────────────────────────────────────
 
 class _FriendCard extends StatelessWidget {
   const _FriendCard({required this.friend, required this.onRemove});
@@ -259,21 +332,30 @@ class _FriendCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final initial =
         friend.nickname.isNotEmpty ? friend.nickname[0].toUpperCase() : '?';
+    final color = _avatarColor(friend.nickname);
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: cs.surfaceContainerHigh,
-              child: Text(
-                initial,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withValues(alpha: 0.7),
+            // Colored avatar
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.13),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    fontFamily: kFontFamily,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
                 ),
               ),
             ),
@@ -287,23 +369,37 @@ class _FriendCard extends StatelessWidget {
                     style: Theme.of(context)
                         .textTheme
                         .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  Text(
-                    friend.tagId,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: kMonoFontFamily,
-                      color: cs.onSurface.withValues(alpha: 0.4),
-                      letterSpacing: 1,
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      friend.tagId,
+                      style: TextStyle(
+                        fontFamily: kMonoFontFamily,
+                        fontSize: 10,
+                        letterSpacing: 1.1,
+                        color: cs.onSurface.withValues(alpha: 0.42),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
             IconButton(
-              icon: Icon(Icons.person_remove_rounded,
-                  size: 20, color: cs.onSurface.withValues(alpha: 0.3)),
+              icon: Icon(
+                Icons.person_remove_outlined,
+                size: 19,
+                color: cs.onSurface.withValues(alpha: 0.25),
+              ),
               onPressed: onRemove,
               tooltip: 'Remove friend',
             ),
@@ -314,14 +410,16 @@ class _FriendCard extends StatelessWidget {
   }
 }
 
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
 class _FriendsLoadingSkeleton extends StatelessWidget {
   const _FriendsLoadingSkeleton();
 
-  static final _fakeFriends = [
-    const Friend(uid: '1', nickname: 'Alex Johnson', tagId: '#AB12'),
-    const Friend(uid: '2', nickname: 'Maria Garcia', tagId: '#CD34'),
-    const Friend(uid: '3', nickname: 'Sam Wilson', tagId: '#EF56'),
-    const Friend(uid: '4', nickname: 'Taylor Lee', tagId: '#GH78'),
+  static const _fakeFriends = [
+    Friend(uid: '1', nickname: 'Alex Johnson', tagId: '#AB12'),
+    Friend(uid: '2', nickname: 'Maria Garcia', tagId: '#CD34'),
+    Friend(uid: '3', nickname: 'Sam Wilson', tagId: '#EF56'),
+    Friend(uid: '4', nickname: 'Taylor Lee', tagId: '#GH78'),
   ];
 
   @override
@@ -338,10 +436,10 @@ class _FriendsLoadingSkeleton extends StatelessWidget {
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
                 child: Text(
-                  'Friends (${_fakeFriends.length})',
-                  style: Theme.of(context).textTheme.labelMedium,
+                  'FRIENDS · ${_fakeFriends.length}',
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
               ),
             ),
@@ -358,6 +456,8 @@ class _FriendsLoadingSkeleton extends StatelessWidget {
     );
   }
 }
+
+// ── Empty state ───────────────────────────────────────────────────────────────
 
 class _EmptyFriends extends StatelessWidget {
   const _EmptyFriends({required this.onAddTap});
@@ -394,17 +494,17 @@ class _EmptyFriends extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Add friends by their tag\nso you can invite them to channels.',
+                'Add friends by their tag ID\nto invite them to channels.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                      height: 1.5,
+                      color: cs.onSurface.withValues(alpha: 0.52),
+                      height: 1.55,
                     ),
               ),
               const SizedBox(height: 28),
               FilledButton.icon(
                 onPressed: onAddTap,
-                icon: const Icon(Icons.person_add_rounded),
+                icon: const Icon(Icons.person_add_rounded, size: 17),
                 label: const Text('Add friend'),
               ),
             ],
@@ -414,4 +514,3 @@ class _EmptyFriends extends StatelessWidget {
     );
   }
 }
-

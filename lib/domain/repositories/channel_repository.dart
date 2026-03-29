@@ -8,6 +8,17 @@ abstract class ChannelRepository {
     String? description,
     required String uid,
     required String nickname,
+    required List<String> notifySlots,
+    required String notifyStartDateBangkok,
+    required bool repeatDaily,
+  });
+
+  Future<void> updateChannelNotificationSchedule({
+    required String channelId,
+    required String uid,
+    required List<String> notifySlots,
+    required String notifyStartDateBangkok,
+    required bool repeatDaily,
   });
 
   Stream<List<ChannelSummary>> watchMyChannels(String uid);
@@ -32,5 +43,11 @@ abstract class ChannelRepository {
     required String channelName,
     required String uid,
     required String nickname,
+  });
+
+  /// Leave a channel as a member — removes member docs and unsubscribes from FCM topic.
+  Future<void> leaveChannel({
+    required String channelId,
+    required String uid,
   });
 }

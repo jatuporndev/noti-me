@@ -26,12 +26,18 @@ class ChannelListCubit extends Cubit<ChannelListState> {
     String? description,
     required String uid,
     required String nickname,
+    required List<String> notifySlots,
+    required String notifyStartDateBangkok,
+    required bool repeatDaily,
   }) async {
     await _channelRepository.createChannel(
       name: name,
       description: description,
       uid: uid,
       nickname: nickname,
+      notifySlots: notifySlots,
+      notifyStartDateBangkok: notifyStartDateBangkok,
+      repeatDaily: repeatDaily,
     );
   }
 
