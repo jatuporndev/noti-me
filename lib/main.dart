@@ -1,24 +1,29 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/services.dart';
 
 import 'core/app/noti_me_app.dart';
 import 'core/di/service_locator.dart';
+import 'core/services/notification_service.dart';
 import 'domain/repositories/user_repository.dart';
 import 'firebase_options.dart';
 
-/// Set when Google Sign-In returns no id token on Android:
-/// `flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=xxx.apps.googleusercontent.com`
-/// (Firebase Console → Project settings → Your apps → Web client ID.)
-const String _kGoogleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarDividerColor: Colors.transparent,
+  ));
+
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await GoogleSignIn.instance.initialize(
-    serverClientId: _kGoogleWebClientId.isEmpty ? null : _kGoogleWebClientId,
-  );
   await configureDependencies();
+
+  final navigatorKey = GlobalKey<NavigatorState>();
+  await NotificationService.instance.initialize(navigatorKey);
+
   sl<UserRepository>().listenForFcmTokenRefresh();
-  runApp(NotiMeApp(authSessionCubit: sl()));
+  runApp(NotiMeApp(authSessionCubit: sl(), navigatorKey: navigatorKey));
 }

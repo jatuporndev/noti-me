@@ -6,9 +6,14 @@ import 'package:noti_me/features/auth/presentation/bloc/auth_session/auth_sessio
 import 'package:noti_me/features/auth/presentation/widgets/auth_gate_view.dart';
 
 class NotiMeApp extends StatelessWidget {
-  const NotiMeApp({super.key, required this.authSessionCubit});
+  const NotiMeApp({
+    super.key,
+    required this.authSessionCubit,
+    required this.navigatorKey,
+  });
 
   final AuthSessionCubit authSessionCubit;
+  final GlobalKey<NavigatorState> navigatorKey;
 
   @override
   Widget build(BuildContext context) {
@@ -17,6 +22,7 @@ class NotiMeApp extends StatelessWidget {
       child: MaterialApp(
         title: 'notiMe',
         theme: buildNotiMeTheme(),
+        navigatorKey: navigatorKey,
         home: const AuthGateView(),
       ),
     );

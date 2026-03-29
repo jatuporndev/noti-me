@@ -35,28 +35,15 @@ class AuthRepositoryImpl implements domain.AuthRepository {
 
   @override
   Future<void> signInWithGoogle() async {
-    try {
-      final account = await _googleSignIn.authenticate();
-      final googleAuth = account.authentication;
-      final idToken = googleAuth.idToken;
-      if (idToken == null || idToken.isEmpty) {
-        throw StateError(
-          'Google Sign-In returned no id token. In Firebase Console, add a '
-          'Web OAuth client and pass its ID as serverClientId in '
-          'GoogleSignIn.instance.initialize() (see google_sign_in README).',
-        );
-      }
-      final credential = firebase_auth.GoogleAuthProvider.credential(
-        idToken: idToken,
-      );
-      await _auth.signInWithCredential(credential);
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled ||
-          e.code == GoogleSignInExceptionCode.interrupted) {
-        return;
-      }
-      rethrow;
-    }
+    final account = await _googleSignIn.signIn();
+    if (account == null) return; // user canceled the picker
+
+    final googleAuth = await account.authentication;
+    final credential = firebase_auth.GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+      accessToken: googleAuth.accessToken,
+    );
+    await _auth.signInWithCredential(credential);
   }
 
   @override

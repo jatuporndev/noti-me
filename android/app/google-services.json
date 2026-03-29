@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "438821325874-r110nuc6iv5qm3nvgdpkas7q75v48r52.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jatuporndev.notime.noti_me",
+            "certificate_hash": "de4e7c57b9548cdd3014140b2d6661a2bd563d31"
+          }
+        },
+        {
           "client_id": "438821325874-n977tvjjuq5co195va8uj2kcuu2htajo.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,6 +37,13 @@
             {
               "client_id": "438821325874-n977tvjjuq5co195va8uj2kcuu2htajo.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "438821325874-t2et3tpj1cmq55sc9v2rtsa2rqp1s55h.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.jatuporndev.notime.notiMe"
+              }
             }
           ]
         }

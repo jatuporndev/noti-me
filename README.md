@@ -1,6 +1,6 @@
-# noti_me
+# notiMe
 
-A new Flutter project.
+Reminder notifications app (Flutter + Firebase).
 
 ## Getting Started
 
