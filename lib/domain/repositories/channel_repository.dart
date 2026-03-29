@@ -50,4 +50,13 @@ abstract class ChannelRepository {
     required String channelId,
     required String uid,
   });
+
+  /// Grant or revoke the "can edit" permission for [targetUid].
+  /// [callerUid] must be the channel owner.
+  Future<void> setMemberCanEdit({
+    required String channelId,
+    required String callerUid,
+    required String targetUid,
+    required bool canEdit,
+  });
 }

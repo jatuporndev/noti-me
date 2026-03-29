@@ -6,6 +6,8 @@ import 'package:noti_me/domain/entities/session_user.dart';
 import 'package:noti_me/domain/repositories/friend_repository.dart';
 import 'package:noti_me/domain/repositories/user_repository.dart';
 
+import 'qr_scanner_screen.dart';
+
 class AddFriendScreen extends StatefulWidget {
   const AddFriendScreen({super.key, required this.user});
 
@@ -24,6 +26,17 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
   void dispose() {
     _tagCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _scanQr() async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => const QrScannerScreen(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    _tagCtrl.text = result;
+    await _lookup();
   }
 
   Future<void> _lookup() async {
@@ -92,13 +105,15 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              "Enter your friend's tag ID to find them.",
+              "Enter your friend's tag ID or scan their QR code.",
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurface.withValues(alpha: 0.55),
                     height: 1.5,
                   ),
             ),
             const SizedBox(height: 20),
+
+            // ── Tag ID search row ───────────────────────────────────────────
             Row(
               children: [
                 Expanded(
@@ -127,16 +142,67 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2.5),
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
                         )
                       : const Text('Search'),
                 ),
               ],
             ),
 
+            const SizedBox(height: 24),
+
+            // ── Divider ─────────────────────────────────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: Divider(
+                      color: cs.onSurface.withValues(alpha: 0.12)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'or',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: 0.38),
+                        ),
+                  ),
+                ),
+                Expanded(
+                  child: Divider(
+                      color: cs.onSurface.withValues(alpha: 0.12)),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // ── Scan QR button ──────────────────────────────────────────────
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _scanQr,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                side: BorderSide(
+                    color: kNotiMePrimary.withValues(alpha: 0.70),
+                    width: 1.5),
+                foregroundColor: cs.onSurface.withValues(alpha: 0.75),
+              ),
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: kNotiMePrimary.withValues(alpha: 0.20),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.qr_code_scanner_rounded,
+                    size: 18, color: Colors.black87),
+              ),
+              label: const Text('Scan QR code',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+
             if (_foundUser != null) ...[
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               _FoundUserCard(
                 nickname: _foundUser!['nickname'] ?? '',
                 tagId: _foundUser!['tagId'] ?? '',

@@ -112,23 +112,31 @@ class ChannelRepositoryImpl implements ChannelRepository {
     required String notifyStartDateBangkok,
     required bool repeatDaily,
   }) async {
-    final ref = _firestore.collection('channels').doc(channelId);
-    final snap = await ref.get();
-    if (!snap.exists) {
-      throw StateError('Channel not found');
+    final channelRef = _firestore.collection('channels').doc(channelId);
+    final channelSnap = await channelRef.get();
+    if (!channelSnap.exists) throw StateError('Channel not found');
+
+    final owner = channelSnap.data()?['createdByUid'] as String?;
+    final isOwner = owner == uid;
+
+    if (!isOwner) {
+      // Check if the member has canEdit permission.
+      final memberSnap =
+          await channelRef.collection('members').doc(uid).get();
+      final canEdit = memberSnap.data()?['canEdit'] as bool? ?? false;
+      if (!canEdit) {
+        throw StateError('You do not have permission to edit the schedule');
+      }
     }
-    final owner = snap.data()?['createdByUid'] as String?;
-    if (owner != uid) {
-      throw StateError('Only the owner can update the schedule');
-    }
+
     final ordered = orderedNotifySlots(notifySlots);
     final batch = _firestore.batch();
-    batch.update(ref, {
+    batch.update(channelRef, {
       'notifySlots': ordered,
       'notifyStartDateBangkok': notifyStartDateBangkok,
       'repeatDaily': repeatDaily,
     });
-    // Keep the owner's membership summary in sync so the list card stays current.
+    // Keep the caller's membership summary in sync.
     batch.update(
       _firestore
           .collection('users')
@@ -208,6 +216,7 @@ class ChannelRepositoryImpl implements ChannelRepository {
                 role: d['role'] as String? ?? 'member',
                 nickname: d['nickname'] as String?,
                 muted: d['muted'] as bool? ?? false,
+                canEdit: d['canEdit'] as bool? ?? false,
                 joinedAt: (d['joinedAt'] as Timestamp?)?.toDate(),
               );
             }).toList());
@@ -366,6 +375,30 @@ class ChannelRepositoryImpl implements ChannelRepository {
     if (topicName != null && topicName.isNotEmpty) {
       await _messaging.unsubscribeFromTopic(topicName);
     }
+  }
+
+  @override
+  Future<void> setMemberCanEdit({
+    required String channelId,
+    required String callerUid,
+    required String targetUid,
+    required bool canEdit,
+  }) async {
+    final channelRef = _firestore.collection('channels').doc(channelId);
+    final channelSnap = await channelRef.get();
+    if (!channelSnap.exists) throw StateError('Channel not found');
+
+    final owner = channelSnap.data()?['createdByUid'] as String?;
+    if (owner != callerUid) {
+      throw StateError('Only the channel owner can change member permissions');
+    }
+    if (targetUid == callerUid) {
+      throw StateError('Cannot change your own permission');
+    }
+
+    await channelRef.collection('members').doc(targetUid).update({
+      'canEdit': canEdit,
+    });
   }
 
   String _generateCode(int length) {

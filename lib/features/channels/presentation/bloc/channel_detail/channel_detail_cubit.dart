@@ -66,6 +66,18 @@ class ChannelDetailCubit extends Cubit<ChannelDetailState> {
   Future<void> toggleMute(String uid, bool muted) =>
       _channelRepository.updateMemberMute(_channelId, uid, muted);
 
+  Future<void> setMemberCanEdit({
+    required String callerUid,
+    required String targetUid,
+    required bool canEdit,
+  }) =>
+      _channelRepository.setMemberCanEdit(
+        channelId: _channelId,
+        callerUid: callerUid,
+        targetUid: targetUid,
+        canEdit: canEdit,
+      );
+
   Future<void> deleteChannel(String uid) =>
       _channelRepository.deleteChannel(_channelId, uid);
 

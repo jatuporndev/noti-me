@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:noti_me/core/theme/app_theme.dart';
 import 'package:noti_me/core/utils/bangkok_calendar.dart';
 import 'package:noti_me/domain/entities/channel.dart';
+import 'package:noti_me/domain/entities/channel_member.dart';
 import 'package:noti_me/domain/entities/reminder.dart';
 import 'package:noti_me/domain/entities/session_user.dart';
 
@@ -32,7 +33,24 @@ class ChannelDetailScreen extends StatelessWidget {
               body: Center(child: Text(message)),
             ),
           ChannelDetailLoaded(:final channel, :final members, :final reminders) =>
-            Scaffold(
+            _buildLoaded(context, channel, members, reminders),
+        };
+      },
+    );
+  }
+
+  Widget _buildLoaded(
+    BuildContext context,
+    Channel channel,
+    List<ChannelMember> members,
+    List<Reminder> reminders,
+  ) {
+    final isOwner = channel.createdByUid == user.uid;
+    final currentMember =
+        members.where((m) => m.uid == user.uid).firstOrNull;
+    final hasEditAccess = isOwner || (currentMember?.canEdit ?? false);
+
+    return Scaffold(
               appBar: AppBar(
                 title: Text(
                   channel.name,
@@ -50,7 +68,8 @@ class ChannelDetailScreen extends StatelessWidget {
                   IconButton(
                     icon: const Icon(Icons.people_outline_rounded),
                     tooltip: 'Members',
-                    onPressed: () => _showMembersSheet(context, members),
+                    onPressed: () =>
+                        _showMembersSheet(context, members, isOwner),
                   ),
 
                   // Overflow menu
@@ -69,7 +88,7 @@ class ChannelDetailScreen extends StatelessWidget {
                             label: 'Invite / Share code',
                           ),
                         ),
-                      if (channel.createdByUid == user.uid)
+                      if (hasEditAccess)
                         PopupMenuItem(
                           value: _MenuAction.notificationSchedule,
                           child: const _MenuItem(
@@ -77,7 +96,7 @@ class ChannelDetailScreen extends StatelessWidget {
                             label: 'Notification schedule',
                           ),
                         ),
-                      if (channel.createdByUid == user.uid)
+                      if (isOwner)
                         PopupMenuItem(
                           value: _MenuAction.delete,
                           child: _MenuItem(
@@ -86,7 +105,7 @@ class ChannelDetailScreen extends StatelessWidget {
                             color: Theme.of(context).colorScheme.error,
                           ),
                         ),
-                      if (channel.createdByUid != user.uid)
+                      if (!isOwner)
                         PopupMenuItem(
                           value: _MenuAction.leave,
                           child: _MenuItem(
@@ -106,8 +125,8 @@ class ChannelDetailScreen extends StatelessWidget {
                   SliverToBoxAdapter(
                     child: _NotifyScheduleSummaryCard(
                       channel: channel,
-                      canEdit: channel.createdByUid == user.uid,
-                      onEdit: channel.createdByUid == user.uid
+                      canEdit: hasEditAccess,
+                      onEdit: hasEditAccess
                           ? () => _openScheduleSheet(context, channel)
                           : null,
                     ),
@@ -135,9 +154,6 @@ class ChannelDetailScreen extends StatelessWidget {
                 ],
               ),
 
-            ),
-        };
-      },
     );
   }
 
@@ -209,13 +225,22 @@ class ChannelDetailScreen extends StatelessWidget {
     }
   }
 
-  void _showMembersSheet(BuildContext context, List<dynamic> members) {
+  void _showMembersSheet(
+      BuildContext context, List<ChannelMember> members, bool isOwner) {
+    final cubit = context.read<ChannelDetailCubit>();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _MembersSheet(members: members),
+      // Provide the cubit so the sheet gets live member updates.
+      builder: (_) => BlocProvider<ChannelDetailCubit>.value(
+        value: cubit,
+        child: _MembersSheet(
+          isOwner: isOwner,
+          currentUserUid: user.uid,
+        ),
+      ),
     );
   }
 
@@ -494,10 +519,43 @@ class _MenuItem extends StatelessWidget {
 
 // ── Members bottom sheet ──────────────────────────────────────────────────────
 
+/// Opens inside a BlocProvider.value(cubit) so it gets live member updates.
 class _MembersSheet extends StatelessWidget {
-  const _MembersSheet({required this.members});
+  const _MembersSheet({
+    required this.isOwner,
+    required this.currentUserUid,
+  });
 
-  final List<dynamic> members;
+  final bool isOwner;
+  final String currentUserUid;
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<ChannelDetailCubit, ChannelDetailState>(
+      builder: (context, state) {
+        final members = state is ChannelDetailLoaded
+            ? state.members
+            : <ChannelMember>[];
+        return _MembersSheetContent(
+          members: members,
+          isOwner: isOwner,
+          currentUserUid: currentUserUid,
+        );
+      },
+    );
+  }
+}
+
+class _MembersSheetContent extends StatelessWidget {
+  const _MembersSheetContent({
+    required this.members,
+    required this.isOwner,
+    required this.currentUserUid,
+  });
+
+  final List<ChannelMember> members;
+  final bool isOwner;
+  final String currentUserUid;
 
   @override
   Widget build(BuildContext context) {
@@ -556,11 +614,14 @@ class _MembersSheet extends StatelessWidget {
               controller: controller,
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: members.length,
-              itemBuilder: (_, i) {
+              itemBuilder: (ctx, i) {
                 final m = members[i];
                 final name = m.nickname ?? m.uid;
                 final initial =
                     name.isNotEmpty ? name[0].toUpperCase() : '?';
+                final isThisMemberOwner = m.isOwner;
+                final canToggle = isOwner && !isThisMemberOwner;
+
                 return ListTile(
                   leading: CircleAvatar(
                     backgroundColor: kNotiMePrimary.withValues(alpha: 0.2),
@@ -575,22 +636,145 @@ class _MembersSheet extends StatelessWidget {
                   title: Text(name,
                       style:
                           const TextStyle(fontWeight: FontWeight.w500)),
-                  subtitle: Text(
-                    m.role == 'owner' ? 'Owner' : 'Member',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurface.withValues(alpha: 0.5)),
+                  subtitle: Row(
+                    children: [
+                      Text(
+                        isThisMemberOwner ? 'Owner' : 'Member',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurface.withValues(alpha: 0.5)),
+                      ),
+                      if (m.canEdit && !isThisMemberOwner) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: kNotiMePrimary.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Can edit',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  trailing: m.muted
-                      ? Icon(Icons.notifications_off_outlined,
-                          size: 16,
-                          color: cs.onSurface.withValues(alpha: 0.35))
-                      : null,
+                  trailing: canToggle
+                      ? _PermissionToggle(
+                          canEdit: m.canEdit,
+                          onChanged: (v) =>
+                              ctx.read<ChannelDetailCubit>().setMemberCanEdit(
+                                    callerUid: currentUserUid,
+                                    targetUid: m.uid,
+                                    canEdit: v,
+                                  ),
+                        )
+                      : m.muted
+                          ? Icon(Icons.notifications_off_outlined,
+                              size: 16,
+                              color: cs.onSurface.withValues(alpha: 0.35))
+                          : null,
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Small icon button the owner uses to grant/revoke edit access.
+class _PermissionToggle extends StatefulWidget {
+  const _PermissionToggle({required this.canEdit, required this.onChanged});
+  final bool canEdit;
+  final Future<void> Function(bool) onChanged;
+
+  @override
+  State<_PermissionToggle> createState() => _PermissionToggleState();
+}
+
+class _PermissionToggleState extends State<_PermissionToggle> {
+  bool _loading = false;
+
+  Future<void> _tap() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await widget.onChanged(!widget.canEdit);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    return Tooltip(
+      message: widget.canEdit ? 'Revoke edit access' : 'Grant edit access',
+      child: GestureDetector(
+        onTap: _tap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: widget.canEdit
+                ? kNotiMePrimary.withValues(alpha: 0.18)
+                : Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.canEdit
+                    ? Icons.edit_rounded
+                    : Icons.edit_off_rounded,
+                size: 14,
+                color: widget.canEdit
+                    ? Colors.black87
+                    : Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.45),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                widget.canEdit ? 'Editor' : 'Viewer',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: widget.canEdit
+                      ? Colors.black87
+                      : Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

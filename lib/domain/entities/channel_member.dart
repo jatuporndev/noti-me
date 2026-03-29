@@ -6,6 +6,7 @@ class ChannelMember extends Equatable {
     required this.role,
     this.nickname,
     this.muted = false,
+    this.canEdit = false,
     this.joinedAt,
   });
 
@@ -13,8 +14,17 @@ class ChannelMember extends Equatable {
   final String role;
   final String? nickname;
   final bool muted;
+
+  /// Whether this member can edit channel options (schedule, reminders).
+  /// Only the owner can grant/revoke this. Owners are always considered editors.
+  final bool canEdit;
   final DateTime? joinedAt;
 
+  bool get isOwner => role == 'owner';
+
+  /// True if this member may modify channel options.
+  bool get hasEditAccess => isOwner || canEdit;
+
   @override
-  List<Object?> get props => [uid, role, nickname, muted, joinedAt];
+  List<Object?> get props => [uid, role, nickname, muted, canEdit, joinedAt];
 }
