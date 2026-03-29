@@ -1,0 +1,11 @@
+{
+  "name": "noti-me-backend",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
