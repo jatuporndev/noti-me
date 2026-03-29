@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "438821325874",
+    "project_id": "noti-me-1380c",
+    "storage_bucket": "noti-me-1380c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:438821325874:android:307abefd763000d15f402b",
+        "android_client_info": {
+          "package_name": "com.jatuporndev.notime.noti_me"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "438821325874-n977tvjjuq5co195va8uj2kcuu2htajo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDS8z6xnGNXjQEafa4NquvA4pVdW6y9B3E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "438821325874-n977tvjjuq5co195va8uj2kcuu2htajo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
