@@ -8,8 +8,12 @@
  * Required header:
  *   x-dispatch-secret: <DISPATCH_SECRET env var>
  *
- * Optional override for testing (only allowed when NODE_ENV !== "production"):
+ * Optional overrides for testing (only allowed when NODE_ENV !== "production"):
  *   body JSON: { "slotOverride": "morning" | "noon" | "evening" }
+ *              { "forceSend": true }   — bypasses slot window, date gate,
+ *                                        one-shot gate, AND dedupe; sends every
+ *                                        channel that has reminders regardless
+ *                                        of time. Use for manual testing only.
  *
  * Dispatch logic per run:
  *   1. Determine current Bangkok slot.
@@ -71,35 +75,45 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // --- Slot ---
+  // --- Slot + forceSend ---
   const now = bangkokNow();
   const todayYmd = formatYmd(now);
 
-  let slot;
   const body = req.body ?? {};
+  const isTestEnv = process.env.NODE_ENV !== "production";
+
+  const forceSend = isTestEnv && body.forceSend === true;
   const slotOverride = typeof body.slotOverride === "string" ? body.slotOverride : null;
 
-  if (slotOverride && process.env.NODE_ENV !== "production") {
+  let slot;
+  if (slotOverride && isTestEnv) {
     assertValidSlot(slotOverride);
     slot = slotOverride;
+  } else if (forceSend) {
+    slot = currentSlot(now) ?? "force";
   } else {
     slot = currentSlot(now);
   }
 
-  if (!slot) {
+  if (!slot && !forceSend) {
     return res.status(200).json({
       ok: true,
       slot: null,
+      forceSend: false,
       skipped: "No dispatch window active right now",
       todayYmd,
     });
   }
 
-  // --- Query channels for this slot ---
-  const channelsSnap = await db
-    .collection("channels")
-    .where("notifySlots", "array-contains", slot)
-    .get();
+  // --- Query channels ---
+  // forceSend: all channels that have any notifySlots set.
+  // Normal:    only channels matching the current slot.
+  const channelsSnap = forceSend
+    ? await db.collection("channels").where("notifySlots", "!=", []).get()
+    : await db
+        .collection("channels")
+        .where("notifySlots", "array-contains", slot)
+        .get();
 
   const results = { sent: [], skipped: [] };
 
@@ -112,30 +126,32 @@ export default async function handler(req, res) {
       const startYmd = data.notifyStartDateBangkok ?? LEGACY_START;
       const repeatDaily = data.repeatDaily !== false; // default true for legacy
 
-      // --- Date gate ---
-      if (startYmd !== LEGACY_START && compareYmd(todayYmd, startYmd) < 0) {
-        results.skipped.push({ channelId, reason: "before_start_date" });
-        return;
-      }
+      if (!forceSend) {
+        // --- Date gate ---
+        if (startYmd !== LEGACY_START && compareYmd(todayYmd, startYmd) < 0) {
+          results.skipped.push({ channelId, reason: "before_start_date" });
+          return;
+        }
 
-      // --- One-shot gate ---
-      if (!repeatDaily && todayYmd !== startYmd) {
-        results.skipped.push({ channelId, reason: "one_shot_already_fired" });
-        return;
-      }
+        // --- One-shot gate ---
+        if (!repeatDaily && todayYmd !== startYmd) {
+          results.skipped.push({ channelId, reason: "one_shot_already_fired" });
+          return;
+        }
 
-      // --- Dedupe ---
-      const sendRecordId = `${todayYmd}_${slot}`;
-      const sendRecordRef = db
-        .collection("channels")
-        .doc(channelId)
-        .collection("sendRecords")
-        .doc(sendRecordId);
+        // --- Dedupe ---
+        const sendRecordId = `${todayYmd}_${slot}`;
+        const sendRecordRef = db
+          .collection("channels")
+          .doc(channelId)
+          .collection("sendRecords")
+          .doc(sendRecordId);
 
-      const existing = await sendRecordRef.get();
-      if (existing.exists) {
-        results.skipped.push({ channelId, reason: "already_sent" });
-        return;
+        const existing = await sendRecordRef.get();
+        if (existing.exists) {
+          results.skipped.push({ channelId, reason: "already_sent" });
+          return;
+        }
       }
 
       // --- Load reminders ---
@@ -184,13 +200,21 @@ export default async function handler(req, res) {
       try {
         const messageId = await messaging.send(message);
 
-        // --- Write dedupe record ---
-        await sendRecordRef.set({
-          slot,
-          sentAt: new Date().toISOString(),
-          messageId,
-          reminderCount: reminders.length,
-        });
+        // --- Write dedupe record (skipped for forceSend runs) ---
+        if (!forceSend) {
+          const sendRecordId = `${todayYmd}_${slot}`;
+          await db
+            .collection("channels")
+            .doc(channelId)
+            .collection("sendRecords")
+            .doc(sendRecordId)
+            .set({
+              slot,
+              sentAt: new Date().toISOString(),
+              messageId,
+              reminderCount: reminders.length,
+            });
+        }
 
         results.sent.push({ channelId, messageId, reminderCount: reminders.length });
       } catch (err) {
@@ -203,6 +227,7 @@ export default async function handler(req, res) {
     ok: true,
     slot,
     todayYmd,
+    forceSend,
     sent: results.sent.length,
     skipped: results.skipped.length,
     details: results,
