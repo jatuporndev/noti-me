@@ -9,8 +9,10 @@ import 'package:noti_me/domain/repositories/invite_repository.dart';
 import 'package:noti_me/features/channels/presentation/bloc/channel_list/channel_list_cubit.dart';
 import 'package:noti_me/features/channels/presentation/screens/channel_list_screen.dart';
 import 'package:noti_me/features/friends/presentation/bloc/friends_cubit.dart';
+import 'package:noti_me/features/friends/presentation/bloc/friends_state.dart';
 import 'package:noti_me/features/friends/presentation/screens/friends_screen.dart';
 import 'package:noti_me/features/invites/presentation/bloc/invite_inbox_cubit.dart';
+import 'package:noti_me/features/invites/presentation/bloc/invite_inbox_state.dart';
 import 'package:noti_me/features/invites/presentation/screens/invite_inbox_screen.dart';
 import 'package:noti_me/features/user/presentation/bloc/profile/profile_cubit.dart';
 import 'package:noti_me/features/user/presentation/screens/profile_screen.dart';
@@ -84,17 +86,63 @@ class _HomeScreenState extends State<HomeScreen> {
             const ProfileScreen(),
           ],
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _tabIndex,
-          onDestinationSelected: (i) => setState(() => _tabIndex = i),
-          destinations: List.generate(
-            _labels.length,
-            (i) => NavigationDestination(
-              icon: Icon(_icons[i]),
-              selectedIcon: Icon(_activeIcons[i]),
-              label: _labels[i],
-            ),
-          ),
+        bottomNavigationBar: BlocBuilder<InviteInboxCubit, InviteInboxState>(
+          builder: (context, inboxState) {
+            return BlocBuilder<FriendsCubit, FriendsState>(
+              builder: (context, friendsState) {
+                final inboxCount = inboxState is InviteInboxLoaded
+                    ? inboxState.invites.length
+                    : 0;
+                final requestCount = friendsState is FriendsLoaded
+                    ? friendsState.incomingRequests.length
+                    : 0;
+
+                return NavigationBar(
+                  selectedIndex: _tabIndex,
+                  onDestinationSelected: (i) =>
+                      setState(() => _tabIndex = i),
+                  destinations: [
+                    NavigationDestination(
+                      icon: Icon(_icons[0]),
+                      selectedIcon: Icon(_activeIcons[0]),
+                      label: _labels[0],
+                    ),
+                    NavigationDestination(
+                      icon: Badge(
+                        isLabelVisible: inboxCount > 0,
+                        label: Text('$inboxCount'),
+                        child: Icon(_icons[1]),
+                      ),
+                      selectedIcon: Badge(
+                        isLabelVisible: inboxCount > 0,
+                        label: Text('$inboxCount'),
+                        child: Icon(_activeIcons[1]),
+                      ),
+                      label: _labels[1],
+                    ),
+                    NavigationDestination(
+                      icon: Badge(
+                        isLabelVisible: requestCount > 0,
+                        label: Text('$requestCount'),
+                        child: Icon(_icons[2]),
+                      ),
+                      selectedIcon: Badge(
+                        isLabelVisible: requestCount > 0,
+                        label: Text('$requestCount'),
+                        child: Icon(_activeIcons[2]),
+                      ),
+                      label: _labels[2],
+                    ),
+                    NavigationDestination(
+                      icon: Icon(_icons[3]),
+                      selectedIcon: Icon(_activeIcons[3]),
+                      label: _labels[3],
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         ),
       ),
     );
