@@ -8,12 +8,11 @@
  * Required header:
  *   x-dispatch-secret: <DISPATCH_SECRET env var>
  *
- * Optional overrides (protected by x-dispatch-secret):
- *   body JSON: { "slotOverride": "morning" | "noon" | "evening" }
- *              { "forceSend": true }   — bypasses slot window, date gate,
- *                                        one-shot gate, AND dedupe; sends every
- *                                        channel that has reminders regardless
- *                                        of time. Use for manual testing only.
+ * Optional body JSON (protected by x-dispatch-secret):
+ *   { "forceSend": true }   — bypasses slot window, date gate,
+ *                              one-shot gate, AND dedupe; sends every
+ *                              channel that has reminders regardless
+ *                              of time. Use for manual testing only.
  *
  * Dispatch logic per run:
  *   1. Determine current Bangkok slot.
@@ -32,7 +31,6 @@ import { db, messaging } from "../lib/firebase.js";
 import {
   bangkokNow,
   currentSlot,
-  assertValidSlot,
   formatYmd,
   compareYmd,
 } from "../lib/bangkok.js";
@@ -87,17 +85,8 @@ export default async function handler(req, res) {
   body = body ?? {};
 
   const forceSend = body.forceSend === true;
-  const slotOverride = typeof body.slotOverride === "string" ? body.slotOverride : null;
 
-  let slot;
-  if (slotOverride) {
-    assertValidSlot(slotOverride);
-    slot = slotOverride;
-  } else if (forceSend) {
-    slot = currentSlot(now) ?? "force";
-  } else {
-    slot = currentSlot(now);
-  }
+  const slot = forceSend ? (currentSlot(now) ?? "force") : currentSlot(now);
 
   if (!slot && !forceSend) {
     return res.status(200).json({
@@ -110,10 +99,10 @@ export default async function handler(req, res) {
   }
 
   // --- Query channels ---
-  // forceSend: all channels that have any notifySlots set.
+  // forceSend: every channel, no filter.
   // Normal:    only channels matching the current slot.
   const channelsSnap = forceSend
-    ? await db.collection("channels").where("notifySlots", "!=", []).get()
+    ? await db.collection("channels").get()
     : await db
         .collection("channels")
         .where("notifySlots", "array-contains", slot)
