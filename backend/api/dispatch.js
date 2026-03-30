@@ -8,7 +8,7 @@
  * Required header:
  *   x-dispatch-secret: <DISPATCH_SECRET env var>
  *
- * Optional overrides for testing (only allowed when NODE_ENV !== "production"):
+ * Optional overrides (protected by x-dispatch-secret):
  *   body JSON: { "slotOverride": "morning" | "noon" | "evening" }
  *              { "forceSend": true }   — bypasses slot window, date gate,
  *                                        one-shot gate, AND dedupe; sends every
@@ -80,13 +80,12 @@ export default async function handler(req, res) {
   const todayYmd = formatYmd(now);
 
   const body = req.body ?? {};
-  const isTestEnv = process.env.NODE_ENV !== "production";
 
-  const forceSend = isTestEnv && body.forceSend === true;
+  const forceSend = body.forceSend === true;
   const slotOverride = typeof body.slotOverride === "string" ? body.slotOverride : null;
 
   let slot;
-  if (slotOverride && isTestEnv) {
+  if (slotOverride) {
     assertValidSlot(slotOverride);
     slot = slotOverride;
   } else if (forceSend) {
