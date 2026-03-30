@@ -50,3 +50,4 @@ app.*.map.json
 # Node (backend/)
 backend/node_modules/
 backend/.vercel/
+.vercel

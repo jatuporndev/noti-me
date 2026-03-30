@@ -6,7 +6,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "echo 'Run: npx vercel dev'"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0"
