@@ -79,7 +79,12 @@ export default async function handler(req, res) {
   const now = bangkokNow();
   const todayYmd = formatYmd(now);
 
-  const body = req.body ?? {};
+  // Vercel does not always pre-parse the body — handle both cases.
+  let body = req.body;
+  if (typeof body === "string") {
+    try { body = JSON.parse(body); } catch { body = {}; }
+  }
+  body = body ?? {};
 
   const forceSend = body.forceSend === true;
   const slotOverride = typeof body.slotOverride === "string" ? body.slotOverride : null;
